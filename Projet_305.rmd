@@ -1,0 +1,288 @@
+---
+title: "Projet_305"
+output: html_document
+author: "Arna Geshkovska, Blandine Malbos, Clementine Prioux"
+---
+
+```{r echo=FALSE}
+library(rjags)
+library(epiDisplay)
+```
+
+## Création d'un dataframe avec les données trouvées dans l'article 
+
+```{r}
+vecteur1 <- rep(0,982)
+vecteur2 <- rep(0,982)
+baye <- data.frame(CT=vecteur1,Deces=vecteur2)
+```
+```{r echo=FALSE}
+head(baye)
+```
+```{r}
+baye$CT[1:497] <- 1
+baye$CT[498:982] <- 0
+
+baye$Deces[1:142] <- 1
+baye$Deces[499:647] <- 1
+
+table(baye)
+```
+## Modèle :
+
+model{
+
+  # Vraisemblance
+  for (i in 1:982){
+    baye[i]~dbern(p[i])
+    lp[i] = intercept + intervention*CT[i]
+    p[i] = exp(lp[i])/(1+ exp(lp[i]))
+  }
+
+
+  # A priori
+  intercept ~ dnorm(-0.85,0.67) 
+  intervention ~ dnorm(0,1) 
+  
+
+  RR <- exp(intervention)
+}
+
+
+## Échantillonnage
+```{r echo=FALSE}
+jags <- jags.model("Modele.txt", data = baye, n.chains = 3,
+                            n.adapt = 1000)
+
+resultat <- coda.samples(model=jags, variable.names=c("RR","intervention","intercept"), n.iter=20000)
+plot(resultat)
+summary(resultat)
+```
+
+##### On enlève la phase de chauffe afin d'atteindre la convergence de la chaîne de Markov vers sa loi stationnaire
+```{r echo=FALSE}
+chauffe <- window(resultat,start = 5000)
+plot(chauffe)
+summary(chauffe)
+
+effectiveSize(chauffe)
+
+```
+
+
+######   On génère 3 chaînes de Markov différentes (valeurs d'initiation différentes)
+```{r}
+jags56 <- jags.model("Modele.txt", data = baye, n.chains=3, inits=list(list(intercept  = 0.001,intervention = 0.01),list(intercept = 10, intervention = 1),list(intercept = -0.005,intervention = -3)))
+```
+
+
+```{r}
+resultat56 <- coda.samples(model=jags56, variable.names=c("intercept","RR", "intervention"), n.iter=20000)
+plot(resultat56)
+summary(resultat56)
+```
+
+
+##### On regarde graphiquement la convergence de l'algorithme MCMC
+```{r echo=FALSE}
+gelman.plot(chauffe)
+```
+La médiane se rapproche rapidement de 1 ce qui est en faveur d'une convergence de l'algorithme
+
+
+```{r echo=FALSE}
+acfplot(chauffe)
+```
+
+
+```{r echo=FALSE}
+cumuplot(chauffe, ask = FALSE, auto.layout = FALSE)
+```
+
+
+```{r echo=FALSE}
+crosscorr.plot(chauffe)
+```
+Pas de corrélation entre intercept et intervention
+
+### Intervales de crédibilité à 95%
+```{r echo=FALSE}
+HDInterval::hdi(chauffe)
+```
+
+
+##### Régréssion logistique pour comparer les résultats qu'on a obtenu 
+```{r echo=FALSE}
+logit<-glm(Deces~CT, family=binomial, data=baye)
+summary(logit)
+logistic.display(logit) 
+```
+RR de 0.9 proche de celui trouvé avec le modèle au dessus 
+
+
+## Analyses de sensibilité : on change l'écart-type du prior de intervention
+
+## Intervention ~ N(0,4)
+model{
+
+  # Vraisemblance
+  for (i in 1:982){
+    baye[i]~dbern(p[i])
+    lp[i] = intercept + intervention*CT[i]
+    p[i] = exp(lp[i])/(1+ exp(lp[i]))
+  }
+
+
+  # A priori
+  intercept ~ dnorm(-0.85,0.67) 
+  intervention ~ dnorm(0,0.25) 
+  
+
+  RR <- exp(intervention)
+}
+```{r echo=FALSE}
+jags2 <- jags.model("modele2.txt", data = baye, n.chains = 3,
+                            n.adapt = 1000)
+```
+```{r echo=FALSE}
+resultat2 <- coda.samples(model=jags2, variable.names=c("RR","intervention","intercept"), n.iter=20000)
+plot(resultat2)
+summary(resultat2)
+```
+
+### Convergence de l'algorithme :
+```{r echo=FALSE}
+chauffe2 <- window(resultat2,start = 5000)
+plot(chauffe2)
+summary(chauffe2)
+
+effectiveSize(chauffe2)
+gelman.plot(chauffe2)
+```
+
+### Intervalles de crédibilité à 95% pour ce prior:
+```{r echo=FALSE}
+HDInterval::hdi(chauffe2)
+
+```
+
+
+## Intervention ~ N(0,9)
+model{
+
+  # Vraisemblance
+  for (i in 1:982){
+    baye[i]~dbern(p[i])
+    lp[i] = intercept + intervention*CT[i]
+    p[i] = exp(lp[i])/(1+ exp(lp[i]))
+  }
+
+
+  # A priori
+  intercept ~ dnorm(-0.85,0.67) 
+  intervention ~ dnorm(0,0.11) 
+  
+
+  RR <- exp(intervention)
+}
+
+```{r echo=FALSE}
+jags3 <- jags.model("modele3.txt", data = baye, n.chains = 3,
+                            n.adapt = 1000)
+
+resultat3 <- coda.samples(model=jags3, variable.names=c("RR","intervention","intercept"), n.iter=20000)
+plot(resultat3)
+summary(resultat3)
+```
+### Convergence de l'algorithme :
+```{r echo=FALSE}
+chauffe3 <- window(resultat3,start = 5000)
+plot(chauffe3)
+summary(chauffe3)
+
+effectiveSize(chauffe3)
+gelman.plot(chauffe3)
+```
+### Intervalles de crédibilité à 95% pour ce prior:
+```{r echo=FALSE}
+HDInterval::hdi(chauffe3)
+```
+
+
+
+## Méthode avec loi de bernouilli 
+
+# Modèle
+model{
+
+  # Vraisemblance
+  for (i in 1:ncontrol){
+    ycontrol[i]~dbern(pc)
+  }
+  for (i in 1:ninterv){
+    yinterv[i]~dbern(RR*pc)
+  }
+
+
+  # A priori
+  logRR~dnorm(0,1)
+  pc ~ dnorm(0.32,0.1)  #probabilité de décès dans le groupe contrôle
+
+  #Re-parametrisation
+  RR <- exp(logRR)  
+}
+
+```{r}
+ycontrol <- rep(0, 485)
+ycontrol[1:149] <- 1
+yinterv<- rep(0, 497)
+yinterv[1:142] <- 1
+```
+
+```{r}
+jags2 <- jags.model("test_pj.txt", data = list(ycontrol = ycontrol, ncontrol = length(ycontrol), yinterv = yinterv, ninterv = length(yinterv)), n.chains = 3,
+                   n.adapt = 1000)
+
+resultat_2 <- coda.samples(model=jags2, variable.names=c("pc","RR"), n.iter=20000)
+plot(resultat_2)
+summary(resultat_2)
+```
+```{r}
+chauffe_2 <- window(resultat_2,start = 5000)
+plot(chauffe_2)
+summary(chauffe_2)
+
+```
+
+
+##### On regarde graphiquement la convergence de l'algorithme MCMC
+```{r echo=FALSE}
+gelman.plot(chauffe_2)
+```
+
+```{r echo=FALSE}
+acfplot(chauffe_2)
+```
+
+
+```{r echo=FALSE}
+cumuplot(chauffe_2, ask = FALSE, auto.layout = FALSE)
+```
+
+Le modèle semble avoir convergé 
+
+### Intervales de crédibilité à 95%
+```{r echo=FALSE}
+HDInterval::hdi(chauffe_2)
+```
+
+```{r}
+resultat_3 <- coda.samples(model=jags2, variable.names="RR", n.iter=20000)
+densplot(resultat_3)
+abline(v=0.76,col = "green")
+abline(v=1.11, col = "green")
+abline(v=0.93,col = "red")
+```
+
+
+
